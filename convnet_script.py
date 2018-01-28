@@ -26,11 +26,12 @@ for i in range(0,len(y_true)-1):
     
 #print a sample image
 #%matplotlib inline
+"""
 test_img=Image.open('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\' + xray_data['Image Index'][10])
 test_img_array=np.array(test_img)
 print(np.shape(test_img_array))
 plt.imshow(test_img)
-
+"""
 
 import os
 number_images=len(os.listdir('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\')) #ie the total number of images
@@ -68,11 +69,11 @@ def init_bias(shape):
     return tf.Variable(init_bias_vals)
 
 def conv2d(x, W):
-    return tf.nn.conv2d(x, W, strides=[1, 8, 8, 1], padding='SAME')
+    return tf.nn.conv2d(x, W, strides=[1, 4, 4, 1], padding='SAME')
 
 def max_pool_2by2(x):
-    return tf.nn.max_pool(x, ksize=[1, 4, 4, 1],
-                          strides=[1, 4, 4, 1], padding='SAME')
+    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                          strides=[1, 2, 2, 1], padding='SAME')
 
 def convolutional_layer(input_x, shape):
     W = init_weights(shape)
@@ -90,14 +91,19 @@ x_image = tf.reshape(x,[-1,1024,1024,1])
 convo_1 = convolutional_layer(x_image,shape=[4,4,1,32])
 convo_1_pooling = max_pool_2by2(convo_1)
 
-convo_2 = convolutional_layer(convo_1_pooling,shape=[8,8,32,32])
+convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,32,64])
 convo_2_pooling = max_pool_2by2(convo_2)
 
-#  pooling layers, so (696/2)/2 = 174 . 520/2/2 = 130. Note, we would need far more conv layers in a real
+convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,64,128])
+convo_3_pooling = max_pool_2by2(convo_3)
+
+
+# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=4; so so each conv+pool layer combination reduces size by a factor of 8
+#, so (1024/8)/8/8 = 2 . Note, we would need far more conv layers in a real
 #life application but this would require a lot of runtime
-# 64 then just comes from the output of the previous Convolution
-convo_2_flat = tf.reshape(convo_2_pooling,[-1,1*1*32])
-full_layer_one = tf.nn.relu(normal_full_layer(convo_2_flat,128))
+# 128 then just comes from the output of the previous Convolution
+convo_3_flat = tf.reshape(convo_3_pooling,[-1,2*2*128])
+full_layer_one = tf.nn.relu(normal_full_layer(convo_3_flat,128))
 
 #placeholders for dropout
 hold_prob = tf.placeholder(tf.float32)
@@ -130,7 +136,6 @@ with tf.Session() as sess:
         
         # PRINT OUT A MESSAGE EVERY 100 STEPS
         if i%1 == 0:
-            
             print('Currently on step {}'.format(i))
             print('Accuracy is:')
             # Test the Train Model
