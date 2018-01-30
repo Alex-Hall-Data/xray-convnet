@@ -27,7 +27,12 @@ for i in range(0,len(y_true)-1):
         if(unique_labels[j] in xray_data['Finding Labels'][i]):
             y_true[i,j]=1
 
-    
+#function to reverse one hot encoding (used later for evaluation)
+def one_hot_decode(instance):
+    for i in range(0,len(instance)-1):
+        if(int(instance[i])==1):
+           return(unique_labels[i]) 
+
 #print a sample image
 #%matplotlib inline
 """
@@ -132,7 +137,7 @@ train = optimizer.minimize(cross_entropy)
 import random
 init = tf.global_variables_initializer()
 
-steps = 1000
+steps = 10
 
 with tf.Session() as sess:
     
@@ -149,10 +154,17 @@ with tf.Session() as sess:
         if i%1 == 0:
             print('Currently on step {}'.format(i))
             print('Accuracy is:')
+            
             # Test the Train Model
             matches = tf.equal(tf.argmax(y_pred,1),tf.argmax(y_true,1))
-
+            predictions=tf.argmax(y_pred,1)
+            
             acc = tf.reduce_mean(tf.cast(matches,tf.float32))
 
             print(sess.run(acc,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
+            
+            print(sess.run(predictions, feed_dixt={x:x_test}))
             print('\n')
+            
+            
+
