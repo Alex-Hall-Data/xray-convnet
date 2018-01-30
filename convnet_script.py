@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sun Jan 28 14:32:23 2018
-
 @author: alex.hall
 """
+#TODO:
+#Use pipelining API to allow for larger train set https://developers.googleblog.com/2017/09/introducing-tensorflow-datasets.html
+#consider using single label instances only in test set
+
+#68% is current accuracy on valid set
 
 import os
 import numpy as np 
@@ -33,7 +37,6 @@ print(np.shape(test_img_array))
 plt.imshow(test_img)
 """
 
-import os
 number_images=len(os.listdir('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\')) #ie the total number of images
 y=list()
 x=list()
@@ -50,6 +53,14 @@ y_train=np.array(y[0:int(0.7*len(y))])
 x_test=np.array(x[int(0.7*len(x)):len(x)])
 y_test=np.array(y[int(0.7*len(y)):len(y)])
 
+test_set_indices=list()
+#use only single label images in test set
+for i in range(0,len(y_test)-1):
+    if(int(np.sum(y_test[[i]]))==1):
+        test_set_indices.append(i)
+
+y_test=y_test[test_set_indices]
+x_test=x_test[test_set_indices]
 y_test=np.reshape(y_test,(np.shape(y_test)[0],15))
 y_train=np.reshape(y_train,(np.shape(y_train)[0],15))
 
