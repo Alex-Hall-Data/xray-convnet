@@ -15,6 +15,7 @@ import pandas as pd
 from glob import glob
 from PIL import Image
 import matplotlib.pyplot as plt
+import tensorflow as tf
 
 xray_data=pd.read_csv("C:\\Users\\alex.hall\\Documents\\datasets\\xray\\Data_Entry_2017.csv\\Data_Entry_2017.csv")
 labels_list=xray_data['Finding Labels'].str.cat(sep='|').split('|')
@@ -70,8 +71,6 @@ y_test=np.reshape(y_test,(np.shape(y_test)[0],15))
 y_train=np.reshape(y_train,(np.shape(y_train)[0],15))
 
 
-import tensorflow as tf
-
 x = tf.placeholder(tf.float32,shape=[None,1024,1024])
 y_true = tf.placeholder(tf.float32,shape=[None,15])
 dropprob = tf.placeholder(tf.float32) #used for dropout
@@ -119,7 +118,7 @@ convo_3_pooling = max_pool_2by2(convo_3)
 #life application but this would require a lot of runtime
 # 128 then just comes from the output of the previous Convolution
 convo_3_flat = tf.reshape(convo_3_pooling,[-1,2*2*128])
-full_layer_one = tf.nn.relu(normal_full_layer(convo_3_flat,128))
+full_layer_one = tf.nn.relu(normal_full_layer(convo_3_flat,1024))
 
 #placeholders for dropout
 hold_prob = tf.placeholder(tf.float32)
@@ -132,16 +131,8 @@ cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_
 optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
 train = optimizer.minimize(cross_entropy)
 
-from show_confusion_matrix import show_confusion_matrix 
-from sklearn.metrics import confusion_matrix
 import random
 init = tf.global_variables_initializer()
-
-
-actuals=tf.argmax(y_test,1)         
-predictions=tf.argmax(y_pred,1)   
-            
-c = tf.confusion_matrix(actuals, predictions)
 
 steps = 10
             
@@ -168,8 +159,14 @@ with tf.Session() as sess:
             
             print(sess.run(acc,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
             
+            predictions=tf.argmax(y_pred,1)
+            actuals=tf.argmax(y_test,1) 
             
-
+            #print(sess.run(predictions,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
+            #print(sess.run(actuals,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
+            
+            c = tf.confusion_matrix(actuals, predictions)
+            print(sess.run(c,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
            
             print('\n')
             
