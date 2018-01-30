@@ -132,13 +132,19 @@ cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_
 optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
 train = optimizer.minimize(cross_entropy)
 
-
-
+from show_confusion_matrix import show_confusion_matrix 
+from sklearn.metrics import confusion_matrix
 import random
 init = tf.global_variables_initializer()
 
-steps = 10
 
+actuals=tf.argmax(y_test,1)         
+predictions=tf.argmax(y_pred,1)   
+            
+c = tf.confusion_matrix(actuals, predictions)
+
+steps = 10
+            
 with tf.Session() as sess:
     
     sess.run(init)
@@ -157,13 +163,14 @@ with tf.Session() as sess:
             
             # Test the Train Model
             matches = tf.equal(tf.argmax(y_pred,1),tf.argmax(y_true,1))
-            predictions=tf.argmax(y_pred,1)
             
             acc = tf.reduce_mean(tf.cast(matches,tf.float32))
-
+            
             print(sess.run(acc,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
             
-            print(sess.run(predictions, feed_dixt={x:x_test}))
+            
+
+           
             print('\n')
             
             
