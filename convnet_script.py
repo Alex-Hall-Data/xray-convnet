@@ -7,8 +7,8 @@ Created on Sun Jan 28 14:32:23 2018
 #Use pipelining API to allow for larger train set https://developers.googleblog.com/2017/09/introducing-tensorflow-datasets.html
 
 #68% is current accuracy on valid set (basically guessing)
-#build a balanced dataset
-#try reshaping input images to 128x128
+
+#also need to investigate why so many train set images are lost at point of load in
 
 import os
 import numpy as np 
@@ -17,7 +17,14 @@ from glob import glob
 from PIL import Image
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import scipy
+from sklearn.preprocessing import normalize
 
+### parameters
+res=128 #size to downsize images to
+instance_multiplier=3 # scaling factor for train dataset - we have this number X min instnces of the smallest class of eachclass (some classes will require resampling)
+
+#import metadata
 xray_data=pd.read_csv("D:\\datasets\\xray\\Data_Entry_2017.csv\\Data_Entry_2017.csv")
 labels_list=xray_data['Finding Labels'].str.cat(sep='|').split('|')
 unique_labels=list(set(labels_list))
@@ -39,7 +46,7 @@ instances_per_label= min(class_length.values())
 #build up the training dataset metadata
 train_set_data=pd.DataFrame()
 for i in list(class_length.keys()):
-    data=(train_set_data_all[train_set_data_all["Finding Labels"].str.contains(i)].sample(instances_per_label))
+    data=(train_set_data_all[train_set_data_all["Finding Labels"].str.contains(i)].sample(instance_multiplier*instances_per_label,replace=True))
     train_set_data=train_set_data.append(data)
 
 
@@ -72,15 +79,19 @@ number_train_images=len(train_set_data)
 number_test_images=len(test_set_data)
 number_valid_images=len(valid_set_data) 
 
-train_set_data=train_set_data.reset_index()
-test_set_data=test_set_data.reset_index()
-valid_set_data=valid_set_data.reset_index()
+#shuffle the data
+train_set_data.index=np.random.permutation(range(0,len(train_set_data)))
+test_set_data.index=np.random.permutation(range(0,len(test_set_data)))
+valid_set_data.index=np.random.permutation(range(0,len(valid_set_data)))
+
 y=list()
 x=list()
 for i in range(0,int(number_train_images)):
     try:
         if(np.shape(np.array(Image.open('D:\\datasets\\xray\\train_set\\images\\' + train_set_data['Image Index'][i])))==(1024,1024)):
-            x.append(np.array(Image.open('D:\\datasets\\xray\\train_set\\images\\' + train_set_data['Image Index'][i])))
+            raw_image=np.array(Image.open('D:\\datasets\\xray\\train_set\\images\\' + train_set_data['Image Index'][i]))
+            resized_image=scipy.misc.imresize(raw_image,(res,res))
+            x.append(resized_image)
             y.append(train_set_data.loc[i,'Finding Labels'])
     except:
         pass
@@ -94,7 +105,9 @@ x=list()
 for i in range(0,int(number_test_images)):
     try:
         if(np.shape(np.array(Image.open('D:\\datasets\\xray\\test_set\\images\\' + test_set_data['Image Index'][i])))==(1024,1024)):
-            x.append(np.array(Image.open('D:\\datasets\\xray\\test_set\\images\\' + test_set_data['Image Index'][i])))
+            raw_image=np.array(Image.open('D:\\datasets\\xray\\test_set\\images\\' + test_set_data['Image Index'][i]))
+            resized_image=scipy.misc.imresize(raw_image,(res,res))
+            x.append(resized_image)
             y.append(test_set_data.loc[i,'Finding Labels'])
     except:
         pass
@@ -108,7 +121,9 @@ x=list()
 for i in range(0,int(number_valid_images)):
     try:
         if(np.shape(np.array(Image.open('D:\\datasets\\xray\\valid_set\\images\\' + valid_set_data['Image Index'][i])))==(1024,1024)):
-            x.append(np.array(Image.open('D:\\datasets\\xray\\valid_set\\images\\' + valid_set_data['Image Index'][i])))
+            raw_image=np.array(Image.open('D:\\datasets\\xray\\valid_set\\images\\' + valid_set_data['Image Index'][i]))
+            resized_image=scipy.misc.imresize(raw_image,(res,res))
+            x.append(resized_image)
             y.append(valid_set_data.loc[i,'Finding Labels'])
     except:
         pass
@@ -140,12 +155,35 @@ y_test=np.reshape(y_test,(np.shape(y_test)[0],15))
 y_train=np.reshape(y_train,(np.shape(y_train)[0],15))
 y_valid=np.reshape(y_valid,(np.shape(y_valid)[0],15))
 
-#now need to resize the images
-#plt.imshow(scipy.misc.imresize(x_train[1],(128,128)))
+#now need to resize the images and normalize
+
+"""
+res=128 # resolution to downsize to
+def downsize(arr,size):
+    arr_new=np.empty(shape=(len(arr),size,size))
+    for i in range(0,len(arr)-1):
+        arr_new[i]=scipy.misc.imresize(arr[i],(res,res))
+    return arr_new
+
+
+x_test=downsize(x_test,res)
+x_valid=downsize(x_valid,res)
+x_train=downsize(x_train,res)
+"""
+
+def normalise(arr,resolution):
+    arr_new=np.empty(shape=(len(arr),resolution,resolution))
+    for i in range(0,len(arr)-1):
+        arr_new[i]=normalize(arr[i])
+    return arr_new
+
+x_test=normalise(x_test,res)
+x_valid=normalise(x_valid,res)
+x_train=normalise(x_train,res)
 
 ##########
 
-x = tf.placeholder(tf.float32,shape=[None,1024,1024])
+x = tf.placeholder(tf.float32,shape=[None,res,res])
 y_true = tf.placeholder(tf.float32,shape=[None,15])
 dropprob = tf.placeholder(tf.float32) #used for dropout
 
@@ -158,7 +196,7 @@ def init_bias(shape):
     return tf.Variable(init_bias_vals)
 
 def conv2d(x, W):
-    return tf.nn.conv2d(x, W, strides=[1, 4, 4, 1], padding='SAME')
+    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 
 def max_pool_2by2(x):
     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
@@ -175,27 +213,27 @@ def normal_full_layer(input_layer, size):
     b = init_bias([size])
     return tf.matmul(input_layer, W) + b
 
-x_image = tf.reshape(x,[-1,1024,1024,1])
+x_image = tf.reshape(x,[-1,res,res,1])
 
-convo_1 = convolutional_layer(x_image,shape=[4,4,1,32])
+convo_1 = convolutional_layer(x_image,shape=[4,4,1,128])
 convo_1_pooling = max_pool_2by2(convo_1)
 
-convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,32,64])
+convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,128,256])
 convo_2_pooling = max_pool_2by2(convo_2)
 
-convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,64,64])
-convo_3_pooling = max_pool_2by2(convo_3)
+#convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,256,512])
+#convo_3_pooling = max_pool_2by2(convo_3)
 
 
-# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=4; so so each conv+pool layer combination reduces size by a factor of 8
-#, so (1024/8)/8/8 = 2 . Note, we would need far more conv layers in a real
+# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=1; so so each conv+pool layer combination reduces size by a factor of 8
+#, so (128/2)/2 = 32 . Note, we would need far more conv layers in a real
 #life application but this would require a lot of runtime
 # 128 then just comes from the output of the previous Convolution
-convo_3_flat = tf.reshape(convo_3_pooling,[-1,2*2*64])
+convo_2_flat = tf.reshape(convo_2_pooling,[-1,32*32*256])
 
 #placeholders for dropout
 hold_prob = tf.placeholder(tf.float32)
-full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_3_flat,512))
+full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_2_flat,1024))
 full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
 #full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,512))
 #full_two_dropout = tf.nn.dropout(full_layer_two,keep_prob=hold_prob)
@@ -207,7 +245,7 @@ full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
 y_pred = normal_full_layer(full_one_dropout,15)
 
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true,logits=y_pred))
-optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+optimizer = tf.train.AdagradOptimizer(learning_rate=0.001)
 train = optimizer.minimize(cross_entropy)
 
 import random
@@ -220,7 +258,7 @@ with tf.Session() as sess:
     sess.run(init)
     
     for i in range(steps):
-        batch_indices=random.sample(range(0,np.shape(x_train)[0]), 100)
+        batch_indices=random.sample(range(0,np.shape(x_train)[0]), 10)
         batch_x  = x_train[batch_indices]
         batch_y = y_train[batch_indices]
         
