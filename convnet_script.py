@@ -5,9 +5,10 @@ Created on Sun Jan 28 14:32:23 2018
 """
 #TODO:
 #Use pipelining API to allow for larger train set https://developers.googleblog.com/2017/09/introducing-tensorflow-datasets.html
-#consider using single label instances only in test set
 
-#68% is current accuracy on valid set
+#68% is current accuracy on valid set (basically guessing)
+#build a balanced dataset
+#try reshaping input images to 128x128
 
 import os
 import numpy as np 
@@ -17,16 +18,40 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-xray_data=pd.read_csv("C:\\Users\\alex.hall\\Documents\\datasets\\xray\\Data_Entry_2017.csv\\Data_Entry_2017.csv")
+xray_data=pd.read_csv("D:\\datasets\\xray\\Data_Entry_2017.csv\\Data_Entry_2017.csv")
 labels_list=xray_data['Finding Labels'].str.cat(sep='|').split('|')
 unique_labels=list(set(labels_list))
 
-y_true=np.zeros(shape=(np.shape(xray_data)[0],len(unique_labels)))
 
-for i in range(0,len(y_true)-1):
-    for j in range(0,len(unique_labels)-1):
-        if(unique_labels[j] in xray_data['Finding Labels'][i]):
-            y_true[i,j]=1
+#split the image metadata into appropriate sets
+test_set_data = xray_data.iloc[0:4998,].sample(2000) #IDEALLY LOSE THESE SAMPLES (ADDED TO DECREASE MEMORY USAGE)
+valid_set_data = xray_data.iloc[5000:14997,].sample(2000)
+train_set_data_all = xray_data.iloc[15000:,]
+
+#get balanced training set
+class_length=dict()
+for label in unique_labels:
+    class_length[label]=len(train_set_data_all[train_set_data_all["Finding Labels"].str.contains(label)])
+
+#we will take this many instances of each class to build up the training set
+instances_per_label= min(class_length.values())
+
+#build up the training dataset metadata
+train_set_data=pd.DataFrame()
+for i in list(class_length.keys()):
+    data=(train_set_data_all[train_set_data_all["Finding Labels"].str.contains(i)].sample(instances_per_label))
+    train_set_data=train_set_data.append(data)
+
+
+#k hot encode the labels
+
+def one_hot_encode(y_true,u_labels):
+    y_out=np.zeros(shape=(len(y_true),len(u_labels)))
+    for i in range(0,len(y_true)-1):
+        for j in range(0,len(u_labels)-1):
+            if(u_labels[j] in y_true[i]):
+                y_out[i,j]=1
+    return(y_out)
 
 #function to reverse one hot encoding (used later for evaluation)
 def one_hot_decode(instance):
@@ -42,34 +67,83 @@ test_img_array=np.array(test_img)
 print(np.shape(test_img_array))
 plt.imshow(test_img)
 """
+#### build sets with actual images
+number_train_images=len(train_set_data)
+number_test_images=len(test_set_data)
+number_valid_images=len(valid_set_data) 
 
-number_images=len(os.listdir('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\')) #ie the total number of images
+train_set_data=train_set_data.reset_index()
+test_set_data=test_set_data.reset_index()
+valid_set_data=valid_set_data.reset_index()
 y=list()
 x=list()
-for i in range(0,int(np.shape(xray_data)[0])):
+for i in range(0,int(number_train_images)):
     try:
-        if(np.shape(np.array(Image.open('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\' + xray_data['Image Index'][i])))==(1024,1024)):
-            x.append(np.array(Image.open('C:\\Users\\alex.hall\\Documents\\datasets\\xray\\images_001\\images\\' + xray_data['Image Index'][i])))
-            y.append(y_true[[i]])
+        if(np.shape(np.array(Image.open('D:\\datasets\\xray\\train_set\\images\\' + train_set_data['Image Index'][i])))==(1024,1024)):
+            x.append(np.array(Image.open('D:\\datasets\\xray\\train_set\\images\\' + train_set_data['Image Index'][i])))
+            y.append(train_set_data.loc[i,'Finding Labels'])
     except:
         pass
     
-x_train=np.array(x[0:int(0.7*len(x))])
-y_train=np.array(y[0:int(0.7*len(y))])
-x_test=np.array(x[int(0.7*len(x)):len(x)])
-y_test=np.array(y[int(0.7*len(y)):len(y)])
+x_train=np.array(x)
+y_train=one_hot_encode(y,unique_labels)
+######
+
+y=list()
+x=list()
+for i in range(0,int(number_test_images)):
+    try:
+        if(np.shape(np.array(Image.open('D:\\datasets\\xray\\test_set\\images\\' + test_set_data['Image Index'][i])))==(1024,1024)):
+            x.append(np.array(Image.open('D:\\datasets\\xray\\test_set\\images\\' + test_set_data['Image Index'][i])))
+            y.append(test_set_data.loc[i,'Finding Labels'])
+    except:
+        pass
+    
+x_test=np.array(x)
+y_test=one_hot_encode(y,unique_labels)
+######
+
+y=list()
+x=list()
+for i in range(0,int(number_valid_images)):
+    try:
+        if(np.shape(np.array(Image.open('D:\\datasets\\xray\\valid_set\\images\\' + valid_set_data['Image Index'][i])))==(1024,1024)):
+            x.append(np.array(Image.open('D:\\datasets\\xray\\valid_set\\images\\' + valid_set_data['Image Index'][i])))
+            y.append(valid_set_data.loc[i,'Finding Labels'])
+    except:
+        pass
+    
+x_valid=np.array(x)
+y_valid=one_hot_encode(y,unique_labels)
+
+
+######
+
+
 
 test_set_indices=list()
-#use only single label images in test set
+valid_set_indices=list()
+#use only single label images in test and valid sets
 for i in range(0,len(y_test)-1):
     if(int(np.sum(y_test[[i]]))==1):
         test_set_indices.append(i)
+        
+for i in range(0,len(y_valid)-1):
+    if(int(np.sum(y_valid[[i]]))==1):
+        valid_set_indices.append(i)
 
 y_test=y_test[test_set_indices]
 x_test=x_test[test_set_indices]
+y_valid=y_valid[valid_set_indices]
+x_valid=x_valid[valid_set_indices]
 y_test=np.reshape(y_test,(np.shape(y_test)[0],15))
 y_train=np.reshape(y_train,(np.shape(y_train)[0],15))
+y_valid=np.reshape(y_valid,(np.shape(y_valid)[0],15))
 
+#now need to resize the images
+#plt.imshow(scipy.misc.imresize(x_train[1],(128,128)))
+
+##########
 
 x = tf.placeholder(tf.float32,shape=[None,1024,1024])
 y_true = tf.placeholder(tf.float32,shape=[None,15])
@@ -109,7 +183,7 @@ convo_1_pooling = max_pool_2by2(convo_1)
 convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,32,64])
 convo_2_pooling = max_pool_2by2(convo_2)
 
-convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,64,128])
+convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,64,64])
 convo_3_pooling = max_pool_2by2(convo_3)
 
 
@@ -117,12 +191,17 @@ convo_3_pooling = max_pool_2by2(convo_3)
 #, so (1024/8)/8/8 = 2 . Note, we would need far more conv layers in a real
 #life application but this would require a lot of runtime
 # 128 then just comes from the output of the previous Convolution
-convo_3_flat = tf.reshape(convo_3_pooling,[-1,2*2*128])
-full_layer_one = tf.nn.relu(normal_full_layer(convo_3_flat,1024))
+convo_3_flat = tf.reshape(convo_3_pooling,[-1,2*2*64])
 
 #placeholders for dropout
 hold_prob = tf.placeholder(tf.float32)
+full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_3_flat,512))
 full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
+#full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,512))
+#full_two_dropout = tf.nn.dropout(full_layer_two,keep_prob=hold_prob)
+#full_layer_three = tf.nn.relu(normal_full_layer(full_layer_two,128))
+#full_three_dropout = tf.nn.dropout(full_layer_three,keep_prob=hold_prob)
+
 
 #output layer
 y_pred = normal_full_layer(full_one_dropout,15)
@@ -134,7 +213,7 @@ train = optimizer.minimize(cross_entropy)
 import random
 init = tf.global_variables_initializer()
 
-steps = 10
+steps = 1000
             
 with tf.Session() as sess:
     
@@ -150,23 +229,23 @@ with tf.Session() as sess:
         # PRINT OUT A MESSAGE EVERY 100 STEPS
         if i%1 == 0:
             print('Currently on step {}'.format(i))
-            print('Accuracy is:')
+            print('Accuracy on validation set is:')
             
             # Test the Train Model
             matches = tf.equal(tf.argmax(y_pred,1),tf.argmax(y_true,1))
             
             acc = tf.reduce_mean(tf.cast(matches,tf.float32))
             
-            print(sess.run(acc,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
+            print(sess.run(acc,feed_dict={x:x_valid,y_true:y_valid,hold_prob:1.0}))
             
             predictions=tf.argmax(y_pred,1)
-            actuals=tf.argmax(y_test,1) 
+            actuals=tf.argmax(y_valid,1) 
             
             #print(sess.run(predictions,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
             #print(sess.run(actuals,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
             
             c = tf.confusion_matrix(actuals, predictions)
-            print(sess.run(c,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
+            print(sess.run(c,feed_dict={x:x_valid,y_true:y_valid,hold_prob:1.0}))
            
             print('\n')
             
