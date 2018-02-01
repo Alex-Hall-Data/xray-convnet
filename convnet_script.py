@@ -43,7 +43,7 @@ for label in unique_labels:
 #we will take this many instances of each class to build up the training set
 instances_per_label= min(class_length.values())
 
-#build up the training dataset metadata
+#build up the training dataset metadata 
 train_set_data=pd.DataFrame()
 for i in list(class_length.keys()):
     data=(train_set_data_all[train_set_data_all["Finding Labels"].str.contains(i)].sample(instance_multiplier*instances_per_label,replace=True))
@@ -138,7 +138,8 @@ y_valid=one_hot_encode(y,unique_labels)
 
 test_set_indices=list()
 valid_set_indices=list()
-#use only single label images in test and valid sets
+train_set_indices=list()
+#use only single label images in test and valid sets ALSO IN TRAIN SET FOR NOW (IDEALLY WONT DO THIS)
 for i in range(0,len(y_test)-1):
     if(int(np.sum(y_test[[i]]))==1):
         test_set_indices.append(i)
@@ -146,16 +147,23 @@ for i in range(0,len(y_test)-1):
 for i in range(0,len(y_valid)-1):
     if(int(np.sum(y_valid[[i]]))==1):
         valid_set_indices.append(i)
+        
+for i in range(0,len(y_train)-1): #TAKE OUT THIS BLOCK TO INCLUDE MULTI CLASS INSTANCES IN TRAIN SET
+    if(int(np.sum(y_train[[i]]))==1):
+        train_set_indices.append(i)
 
 y_test=y_test[test_set_indices]
 x_test=x_test[test_set_indices]
+y_train=y_train[train_set_indices]#TAKE OUT THIS LINE TO INCLUDE MULTI CLASS INSTANCES IN TRAIN SET
+x_train=x_train[train_set_indices]#TAKE OUT THIS LINE TO INCLUDE MULTI CLASS INSTANCES IN TRAIN SET
 y_valid=y_valid[valid_set_indices]
 x_valid=x_valid[valid_set_indices]
+
 y_test=np.reshape(y_test,(np.shape(y_test)[0],15))
 y_train=np.reshape(y_train,(np.shape(y_train)[0],15))
 y_valid=np.reshape(y_valid,(np.shape(y_valid)[0],15))
 
-#now need to resize the images and normalize
+
 
 """
 res=128 # resolution to downsize to
@@ -215,37 +223,39 @@ def normal_full_layer(input_layer, size):
 
 x_image = tf.reshape(x,[-1,res,res,1])
 
-convo_1 = convolutional_layer(x_image,shape=[4,4,1,128])
+convo_1 = convolutional_layer(x_image,shape=[4,4,1,16])
 convo_1_pooling = max_pool_2by2(convo_1)
 
-convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,128,256])
+convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,16,32])
 convo_2_pooling = max_pool_2by2(convo_2)
 
-#convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,256,512])
-#convo_3_pooling = max_pool_2by2(convo_3)
+convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,32,64])
+convo_3_pooling = max_pool_2by2(convo_3)
 
+convo_4 = convolutional_layer(convo_3_pooling,shape=[4,4,64,128])
+convo_4_pooling = max_pool_2by2(convo_4)
 
-# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=1; so so each conv+pool layer combination reduces size by a factor of 8
-#, so (128/2)/2 = 32 . Note, we would need far more conv layers in a real
+# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=1; so so each conv+pool layer combination reduces size by a factor of 16
+#, so (256/2)/2/2/2 = 16 . Note, we would need far more conv layers in a real
 #life application but this would require a lot of runtime
 # 128 then just comes from the output of the previous Convolution
-convo_2_flat = tf.reshape(convo_2_pooling,[-1,32*32*256])
+convo_4_flat = tf.reshape(convo_4_pooling,[-1,16*16*128])
 
 #placeholders for dropout
 hold_prob = tf.placeholder(tf.float32)
-full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_2_flat,1024))
+full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_4_flat,512))
 full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
-#full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,512))
-#full_two_dropout = tf.nn.dropout(full_layer_two,keep_prob=hold_prob)
-#full_layer_three = tf.nn.relu(normal_full_layer(full_layer_two,128))
-#full_three_dropout = tf.nn.dropout(full_layer_three,keep_prob=hold_prob)
+full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,256))
+full_two_dropout = tf.nn.dropout(full_layer_two,keep_prob=hold_prob)
+full_layer_three = tf.nn.relu(normal_full_layer(full_layer_two,128))
+full_three_dropout = tf.nn.dropout(full_layer_three,keep_prob=hold_prob)
 
 
 #output layer
-y_pred = normal_full_layer(full_one_dropout,15)
+y_pred = normal_full_layer(full_three_dropout,15)
 
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true,logits=y_pred))
-optimizer = tf.train.AdagradOptimizer(learning_rate=0.001)
+optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
 train = optimizer.minimize(cross_entropy)
 
 import random
@@ -258,7 +268,7 @@ with tf.Session() as sess:
     sess.run(init)
     
     for i in range(steps):
-        batch_indices=random.sample(range(0,np.shape(x_train)[0]), 10)
+        batch_indices=random.sample(range(0,np.shape(x_train)[0]), 100)
         batch_x  = x_train[batch_indices]
         batch_y = y_train[batch_indices]
         
@@ -276,12 +286,9 @@ with tf.Session() as sess:
             
             print(sess.run(acc,feed_dict={x:x_valid,y_true:y_valid,hold_prob:1.0}))
             
+            #uncomment to get confusion matrix
             predictions=tf.argmax(y_pred,1)
             actuals=tf.argmax(y_valid,1) 
-            
-            #print(sess.run(predictions,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
-            #print(sess.run(actuals,feed_dict={x:x_test,y_true:y_test,hold_prob:1.0}))
-            
             c = tf.confusion_matrix(actuals, predictions)
             print(sess.run(c,feed_dict={x:x_valid,y_true:y_valid,hold_prob:1.0}))
            
