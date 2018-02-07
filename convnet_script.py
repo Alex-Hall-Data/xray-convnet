@@ -8,7 +8,7 @@ Created on Sun Jan 28 14:32:23 2018
 
 #68% is current accuracy on valid set (basically guessing)
 
-#also need to investigate why so many train set images are lost at point of load in
+#try to get back to using float32 (issue is that the train/test sets are float 64 by default)
 
 import os
 import numpy as np 
@@ -200,7 +200,8 @@ def init_weights(shape):
     return tf.Variable(init_random_dist)
 
 def init_bias(shape):
-    init_bias_vals = tf.constant(0.1, shape=shape)
+    #init_bias_vals = tf.constant(0.1, shape=shape)
+    init_bias_vals = tf.truncated_normal(shape,stddev=0.1)
     return tf.Variable(init_bias_vals)
 
 def conv2d(x, W):
@@ -221,33 +222,57 @@ def normal_full_layer(input_layer, size):
     b = init_bias([size])
     return tf.matmul(input_layer, W) + b
 
+#placeholders for dropout
+hold_prob = tf.placeholder(tf.float32)
+
+
 x_image = tf.reshape(x,[-1,res,res,1])
 
 convo_1 = convolutional_layer(x_image,shape=[4,4,1,16])
-convo_1_pooling = max_pool_2by2(convo_1)
+convo_1_drop = tf.nn.dropout(convo_1, keep_prob=hold_prob)
+#convo_1_pooling = max_pool_2by2(convo_1)
 
-convo_2 = convolutional_layer(convo_1_pooling,shape=[4,4,16,32])
-convo_2_pooling = max_pool_2by2(convo_2)
+convo_2 = convolutional_layer(convo_1_drop,shape=[4,4,16,16])
+#convo_2_pooling = max_pool_2by2(convo_2)
 
-convo_3 = convolutional_layer(convo_2_pooling,shape=[4,4,32,64])
-convo_3_pooling = max_pool_2by2(convo_3)
+convo_3 = convolutional_layer(convo_2,shape=[4,4,16,32])
+convo_3_drop = tf.nn.dropout(convo_3, keep_prob=hold_prob)
+convo_3_pooling = max_pool_2by2(convo_3_drop)
 
-convo_4 = convolutional_layer(convo_3_pooling,shape=[4,4,64,128])
-convo_4_pooling = max_pool_2by2(convo_4)
+convo_4 = convolutional_layer(convo_3_pooling,shape=[2,2,32,32])
+#convo_4_pooling = max_pool_2by2(convo_4)
 
-# 3 pooling layers with k size =2 and 3 convolutinal layers with stride=1; so so each conv+pool layer combination reduces size by a factor of 16
-#, so (256/2)/2/2/2 = 16 . Note, we would need far more conv layers in a real
+convo_5 = convolutional_layer(convo_4,shape=[2,2,32,32])
+convo_5_drop = tf.nn.dropout(convo_5, keep_prob=hold_prob)
+#convo_5_pooling = max_pool_2by2(convo_5)
+
+convo_6 = convolutional_layer(convo_5_drop,shape=[2,2,32,32])
+convo_6_pooling = max_pool_2by2(convo_6)
+
+convo_7 = convolutional_layer(convo_6_pooling,shape=[2,2,32,64])
+#convo_4_pooling = max_pool_2by2(convo_4)
+
+convo_8 = convolutional_layer(convo_7,shape=[2,2,64,64])
+convo_8_drop = tf.nn.dropout(convo_8, keep_prob=hold_prob)
+#convo_5_pooling = max_pool_2by2(convo_5)
+
+convo_9 = convolutional_layer(convo_8_drop,shape=[2,2,64,64])
+convo_9_pooling = max_pool_2by2(convo_9)
+
+
+
+# 3 pooling layers with k size =2 and 9 convolutinal layers with stride=1; so so each conv+pool layer combination reduces size by a factor of 4
+#, so (256/2)/2/2 = 16 . Note, we would need far more conv layers in a real
 #life application but this would require a lot of runtime
-# 128 then just comes from the output of the previous Convolution
-convo_4_flat = tf.reshape(convo_4_pooling,[-1,16*16*128])
+# 32 then just comes from the output of the previous Convolution
+convo_9_flat = tf.reshape(convo_9_pooling,[-1,16*16*64])
 
-#placeholders for dropout
-hold_prob = tf.placeholder(tf.float32)
-full_layer_one = tf.nn.sigmoid(normal_full_layer(convo_4_flat,512))
+#build fully connected layers
+full_layer_one = tf.nn.tanh(normal_full_layer(convo_9_flat,128))
 full_one_dropout = tf.nn.dropout(full_layer_one,keep_prob=hold_prob)
-full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,256))
+full_layer_two = tf.nn.tanh(normal_full_layer(full_one_dropout,64))
 full_two_dropout = tf.nn.dropout(full_layer_two,keep_prob=hold_prob)
-full_layer_three = tf.nn.relu(normal_full_layer(full_layer_two,128))
+full_layer_three = tf.nn.relu(normal_full_layer(full_layer_two,32))
 full_three_dropout = tf.nn.dropout(full_layer_three,keep_prob=hold_prob)
 
 
@@ -255,7 +280,7 @@ full_three_dropout = tf.nn.dropout(full_layer_three,keep_prob=hold_prob)
 y_pred = normal_full_layer(full_three_dropout,15)
 
 cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true,logits=y_pred))
-optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
 train = optimizer.minimize(cross_entropy)
 
 import random
@@ -272,7 +297,7 @@ with tf.Session() as sess:
         batch_x  = x_train[batch_indices]
         batch_y = y_train[batch_indices]
         
-        sess.run(train,feed_dict={x:batch_x,y_true:batch_y,hold_prob:0.5})
+        sess.run(train,feed_dict={x:batch_x,y_true:batch_y,hold_prob:0.1})
         
         # PRINT OUT A MESSAGE EVERY 100 STEPS
         if i%1 == 0:
